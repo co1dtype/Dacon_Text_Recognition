@@ -6,3 +6,5 @@ Environment
 - GPU: GeForce RTX 3090 x 3
 - Pytorch: 1.12.0
 - cuda: 11.3
+
+Data Argumentation(Cut_mix_ver)
