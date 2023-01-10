@@ -7,5 +7,6 @@ Environment
 - Pytorch: 1.12.0
 - cuda: 11.3
 
-Data Argumentation(Cut_mix_ver)
-Make_LMDB
+Data Argumentation(Cut_mix_ver)   
+Make_LMDB     
+EDA    
