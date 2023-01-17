@@ -10,5 +10,3 @@ Environment
 Data Argumentation(Cut_mix_ver)   
 Make_LMDB     
 EDA    
-
-중간 결과: OS로 승부 
