@@ -3,7 +3,7 @@
 Environment
 
 - OS: Ubuntu 20.04 server
-- GPU: GeForce RTX 3090 x 3
+- GPU: GeForce RTX 3090
 - Pytorch: 1.12.0
 - cuda: 11.3
 
