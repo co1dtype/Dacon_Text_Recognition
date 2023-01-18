@@ -2,8 +2,8 @@ import torch.optim as optim
 
 def get_optimizer(optimizer_str: str) -> 'optimizer':
     optimizer = None
-    if optimizer_str == 'adadelta':
-        optimizer = optim.adadelta
+    if optimizer_str == 'Adadelta':
+        optimizer = optim.Adadelta
 
     elif optimizer_str == 'Adam':
         optimizer = optim.Adam
