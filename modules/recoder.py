@@ -1,16 +1,18 @@
 import os
-import matplotlib as plt
+import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 
-from datetime import datetime
 
-def Recode(epoch, model, CFG, train_loss, val_loss, train_acc, val_acc, best_loss, best_acc, model_save=False):
-    current_epoch = 1
+
+def Recode(epoch, model, dir_name, CFG, train_loss, val_loss, train_acc, val_acc, best_loss, best_acc, model_save=False):
+    if os.path.isfile(f"./result/{dir_name}/recode.csv"):
+        recode_df = pd.read_csv(f"./result/{dir_name}/recode.csv")
+    
     recode_df = pd.DataFrame(columns=['epoch', 'train_loss', 'val_loss',
                                       'train_acc', 'val_acc', 'best_loss',
                                       'best_acc'])
-    dir_name = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
     fig, axes = plt.subplots(1, 2)
     plt.close(fig)
 
@@ -51,8 +53,7 @@ def Recode(epoch, model, CFG, train_loss, val_loss, train_acc, val_acc, best_los
     # Write Hyperparameter
     if epoch == 1:
         with open(f"./result/{dir_name}/train.txt", 'w', encoding='UTF-8') as f:
-            for key, values in CFG.items():
-                f.write(f"{key} {values}" + "\n")
+            f.write(f"{CFG}" + "\n")
 
     if model_save:
         torch.save(model, f"./result/{dir_name}/model.pt")
