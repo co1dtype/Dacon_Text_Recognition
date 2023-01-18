@@ -1,63 +1,86 @@
-import os, random, torch, create_lmdb
+import torch
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from tqdm.auto import tqdm
-
-def correct_prediction(word):
-    parts = word.split("-")
-
-    def remove_duplicates(text):
-        if len(text) > 1:
-            letters = [text[0]] + [letter for idx, letter in enumerate(text[1:], start=1) if text[idx] != text[idx - 1]]
-        elif len(text) == 1:
-            letters = [text[0]]
-        else:
-            return ""
-        return "".join(letters)
-    parts = [remove_duplicates(part) for part in parts]
-    corrected_word = "".join(parts)
-    return corrected_word
+from modules.metrics import compute_loss, compute_acc
+from modules.recoder import Recode
 
 
-def submit_csv(submit, predictions):
-    submit['label'] = predictions
-    submit['label'] = submit['label'].apply(correct_prediction)
-    submit.to_csv('./submission.csv', index=False)
+def Trainer(model, epochs, dir_name, CFG, scaler, char2idx, idx2char, criterion, optimizer, train_loader, val_loader, scheduler, device):
+    model.to(device)
 
-def seed_everything(seed):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = True
+    best_model = None
+    early_stop = 5
+    best_acc = -1
+    best_loss = 1e9
+
+    for epoch in range(1, epochs + 1):
+        model.train()
+        train_loss = []
+        train_acc = []
+        model_save = False
+        for image_batch, text_batch in tqdm(iter(train_loader)):
+            image_batch = image_batch.to(device)
+
+            optimizer.zero_grad()
+
+            with torch.cuda.amp.autocast():
+                text_batch_logits = model(image_batch)
+                loss = compute_loss(text_batch, text_batch_logits, criterion, device, char2idx)
+
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
+            train_acc += compute_acc(text_batch, text_batch_logits, idx2char)
+            train_loss.append(loss.item())
+
+        _train_loss = np.mean(train_loss)
+
+        _train_acc = 100. * sum(train_acc) / len(train_loader.dataset)
+        _val_loss, _val_acc = validation(model, val_loader, criterion, char2idx, idx2char, device)
+
+        print(f'Epoch : [{epoch}] Train CTC Loss : [{_train_loss:.5f}] Val CTC Loss : [{_val_loss:.5f}]')
+        print(f'Epoch : [{epoch}] Train Accuracy : [{_train_acc:.5f}] Val Accuracy : [{_val_acc:.5f}]')
+
+        if scheduler is not None:
+            scheduler.step(_val_loss)
+
+        if best_loss > _val_loss or best_acc < _val_acc:
+            early_stop += 1
+
+        if best_loss > _val_loss:
+            best_loss = _val_loss
+
+        if best_acc < _val_acc:
+            best_acc = _val_acc
+            best_model = model
+            model_save = True
+
+        early_stop -= 1
+        Recode(epoch, model, dir_name, CFG, _train_loss, _val_loss, _train_acc, _val_acc, best_loss, best_acc, model_save)
+        
+        if early_stop == 0:
+            break
+
+    return best_model
 
 
-def get_train_val_df(path, seed=42):
-    train_path = os.path.join(path, 'data', 'train.csv')
-    df = pd.read_csv(train_path)
+def validation(model, val_loader, criterion, char2idx, idx2char, device):
+    model.eval()
+    val_loss = []
+    val_acc = []
+    with torch.no_grad():
+        for image_batch, text_batch in tqdm(iter(val_loader)):
+            image_batch = image_batch.to(device)
 
-    df['len'] = df['label'].str.len()
-    train_v1 = df[df['len'] == 1]
+            with torch.cuda.amp.autocast():
+                text_batch_logits = model(image_batch)
+                loss = compute_loss(text_batch, text_batch_logits, criterion, device, char2idx)
 
-    df = df[df['len'] > 1]
-    train_v2, val, _, _ = train_test_split(df, df['len'], test_size=0.1295, random_state=seed)
-    train = pd.concat([train_v1, train_v2])
+            val_loss.append(loss.item())
+            val_acc += compute_acc(text_batch, text_batch_logits, idx2char)
 
-    return (train, val)
-
-
-def get_train_val_df(path, seed=42):
-    train_path = os.path.join(path, 'data', 'train.csv')
-    df = pd.read_csv(train_path)
-
-    df['len'] = df['label'].str.len()
-    train_v1 = df[df['len'] == 1]
-    
-    df = df[df['len'] > 1]
-    train_v2, val, _, _ = train_test_split(df, df['len'], test_size=0.1295, random_state=seed)
-    train = pd.concat([train_v1, train_v2])
-
-    return (train, val)
+    _val_loss = np.mean(val_loss)
+    _val_acc = 100. * sum(val_acc) / len(val_loader.dataset)
+    return _val_loss, _val_acc
