@@ -1,8 +1,24 @@
-import os, random, torch, lmdb
+import os, random, torch, create_lmdb
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from tqdm.auto import tqdm
+
+def correct_prediction(word):
+    parts = word.split("-")
+
+    def remove_duplicates(text):
+        if len(text) > 1:
+            letters = [text[0]] + [letter for idx, letter in enumerate(text[1:], start=1) if text[idx] != text[idx - 1]]
+        elif len(text) == 1:
+            letters = [text[0]]
+        else:
+            return ""
+        return "".join(letters)
+    parts = [remove_duplicates(part) for part in parts]
+    corrected_word = "".join(parts)
+    return corrected_word
+
 
 def submit_csv(submit, predictions):
     submit['label'] = predictions
@@ -19,7 +35,7 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = True
 
 
-def get_train_val(path, seed=42):
+def get_train_val_df(path, seed=42):
     train_path = os.path.join(path, 'data', 'train.csv')
     df = pd.read_csv(train_path)
 
@@ -32,43 +48,16 @@ def get_train_val(path, seed=42):
 
     return (train, val)
 
-def write_cache(env, cache):
-    with env.begin(write=True) as txn:
-        for k, v in cache.items():
-            txn.put(k, v)
 
-def write_lmdb(df, env, bar_desc='train'):
-    cnt = 1
-    cache = {}
-    for i in tqdm(range(len(df)), desc=bar_desc):
-        img_path = df.iloc[i]['img_path']
-        if bar_desc != "test":
-            label = df.iloc[i]['label']
+def get_train_val_df(path, seed=42):
+    train_path = os.path.join(path, 'data', 'train.csv')
+    df = pd.read_csv(train_path)
 
-        with open(img_path, 'rb') as f:
-            img_bin = f.read()
+    df['len'] = df['label'].str.len()
+    train_v1 = df[df['len'] == 1]
+    
+    df = df[df['len'] > 1]
+    train_v2, val, _, _ = train_test_split(df, df['len'], test_size=0.1295, random_state=seed)
+    train = pd.concat([train_v1, train_v2])
 
-        image_key = f'image-{cnt:09d}'.encode()
-        label_key = f'label-{cnt:09d}'.encode()
-
-        cache[image_key] = img_bin
-        if bar_desc != "test":
-            cache[label_key] = label.encode()
-
-        if cnt % 1000 == 0:
-            write_cache(env, cache)
-            cache = {}
-        cnt += 1
-
-    # remain cache
-    cache['num-samples'.encode()] = str(cnt - 1).encode()
-    write_cache(env, cache)
-
-def create_lmdb(path, data_type, df):
-    data_path = os.path.join(path, 'data', 'lmdb', f'{data_type}_lmdb')
-    env = lmdb.open(data_path, map_size=1099511627776)
-    write_lmdb(df, env, bar_desc=data_type)
-    env.close()
-
-
-
+    return (train, val)
