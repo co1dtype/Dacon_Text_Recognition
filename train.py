@@ -1,12 +1,14 @@
 import torch, os, sys, argparse, lmdb
-from modules.utils import get_train_val
+from modules.utils import get_train_val_df
 from modules.datasets import OCRDataset
 from modules.losses import get_loss
 from modules.optimizer import get_optimizer
 from modules.schedulers import get_scheduler
+from modules.trainer import Trainer
 from models.utils import get_model
 from torch.utils.data import DataLoader
 from torchsummary import summary
+from datetime import datetime
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 prj_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,23 +18,24 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=192, help='input batch size')
     parser.add_argument('--num_worker', type=str, help='input num worker')
-    parser.add_argument('--opti', type=str, default='adam', help='input optimizer')
-    parser.add_argument('--lr', type=float, default=1e-3, help='input learning rate')
+    parser.add_argument('--opti', type=str, default='AdamW', help='input optimizer')
+    parser.add_argument('--lr', type=float, default=3e-3, help='input learning rate')
     parser.add_argument('--seed', type=int, default=42, help='input seed')
     parser.add_argument('--epoch', type=int, default=20, help='input epoch')
     """ Data processing """
-    parser.add_argument('--imgH', type=int, default=32, help='the height of the input imgH')
-    parser.add_argument('--imgW', type=int, default=100, help='the width of the input imgW')
+    parser.add_argument('--imgH', type=int, default=128, help='the height of the input imgH')
+    parser.add_argument('--imgW', type=int, default=332, help='the width of the input imgW')
     """ Model Architecture """
     parser.add_argument('--model', type=str, help='input model name')
     parser.add_argument('--hidden_size', type=int, default=256, help='the size of the LSTM hidden state')
 
     CFG = parser.parse_args()
+    dir_name = datetime.now().strftime("%Y%m%d_%H%M%S")
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = CFG.num_worker
-
+    
     # Data split
-    train, val = get_train_val(prj_dir, CFG.seed)
+    train, val = get_train_val_df(prj_dir, CFG.seed)
 
     # label preprocessing
     train_gt = [gt for gt in train['label']]
@@ -58,7 +61,8 @@ if __name__ == '__main__':
     val_loader = DataLoader(val_dataset, batch_size=CFG.batch_size, shuffle=True)
 
     # Hyperparameter
-    model = get_model(CFG.model, len(char2idx), CFG.hidden_size).eval()
+    model = get_model(CFG.model)
+    model = model(len(char2idx), CFG.hidden_size).eval()
     criterion = get_loss()
     scaler = torch.cuda.amp.GradScaler()
 
@@ -73,7 +77,7 @@ if __name__ == '__main__':
 
 
     # Run
-    train(model, CFG.epoch, scaler, idx2char, criterion, optimizer, train_loader, val_loader, scheduler, device)
+    Trainer(model, CFG.epoch, dir_name, CFG, scaler, char2idx, idx2char, criterion, optimizer, train_loader, val_loader, scheduler, device)
 
 
 
